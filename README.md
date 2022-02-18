@@ -1,0 +1,2 @@
+# inject
+golang autowise
