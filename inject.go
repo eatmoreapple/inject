@@ -49,10 +49,14 @@ func (i *Instance) init() error {
 	// is a struct
 	if ri.Kind() == reflect.Struct {
 		for j := 0; j < ri.NumField(); j++ {
+			rf := rt.Field(j)
+			if rf.PkgPath != "" {
+				continue
+			}
 			field := ri.Field(j)
 			field = reflect.Indirect(field)
 			if field.Kind() == reflect.Struct {
-				instance := Instance{Value: field.Interface(), Name: i.Name + "." + rt.Field(j).Name}
+				instance := Instance{Value: field.Interface(), Name: i.Name + "." + rf.Name}
 				if err := instance.init(); err != nil {
 					return err
 				}
