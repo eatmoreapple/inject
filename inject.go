@@ -52,18 +52,8 @@ func (i *Instance) init() error {
 			rf := rt.Field(j)
 			field := ri.Field(j)
 			field = reflect.Indirect(field)
-			// if is zero value or not exported,skip
+			// if is zero value or not exported,s
 			if rf.PkgPath != "" || field.IsNil() || field.IsZero() {
-				continue
-			}
-			if field.Kind() == reflect.Struct {
-				instance := Instance{Value: field.Interface(), Name: i.Name + "." + rf.Name}
-				if err := instance.init(); err != nil {
-					return err
-				}
-				for k, v := range instance.container {
-					i.container[k] = v
-				}
 				continue
 			}
 			i.container[i.Name+"."+rt.Field(j).Name] = &Instance{Value: field.Interface(), Name: i.Name + "." + rt.Field(j).Name}
