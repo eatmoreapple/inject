@@ -95,7 +95,15 @@ func (i *Instance) AutoWired(vs ...interface{}) error {
 		}
 		for j := 0; j < rv.NumField(); j++ {
 			field := rv.Field(j)
-			inject := t.Field(j).Tag.Get("inject")
+			tf := t.Field(j)
+			// is unexported
+			// PkgPath is the package path that qualifies a lower case (unexported)
+			// field name. It is empty for upper case (exported) field names.
+			// See https://golang.org/ref/spec#Uniqueness_of_identifiers
+			if tf.PkgPath != "" {
+				continue
+			}
+			inject := tf.Tag.Get("inject")
 			if inject == "-" {
 				continue
 			}
