@@ -46,19 +46,6 @@ func (i *Instance) init() error {
 		i.Name = strings.Replace(rt.PkgPath(), "/", ".", -1) + "." + rt.Name()
 	}
 	i.container[i.Name] = i
-	// is a struct
-	if ri.Kind() == reflect.Struct {
-		for j := 0; j < ri.NumField(); j++ {
-			rf := rt.Field(j)
-			field := ri.Field(j)
-			field = reflect.Indirect(field)
-			// if is zero value or not exported,s
-			if rf.PkgPath != "" || field.IsNil() || field.IsZero() {
-				continue
-			}
-			i.container[i.Name+"."+rt.Field(j).Name] = &Instance{Value: field.Interface(), Name: i.Name + "." + rt.Field(j).Name}
-		}
-	}
 	return nil
 }
 
