@@ -116,7 +116,6 @@ func (i *Instance) AutoWired(vs ...interface{}) error {
 						if !ok {
 							return fmt.Errorf("inject: can not find a instance for %s", field.Type().String())
 						}
-						continue
 					} else {
 						// get the instance by name
 						v, ok := i.container[inject]
@@ -126,12 +125,11 @@ func (i *Instance) AutoWired(vs ...interface{}) error {
 						}
 						rv := reflect.ValueOf(v.Value)
 						// check if the type of the instance is assignable to the interface
-						if rv.Type().Implements(field.Type()) {
+						if !rv.Type().Implements(field.Type()) {
 							field.Set(rv)
 							continue
-						} else {
-							return fmt.Errorf("inject: type of %s is not assignable to %s", rv.Type().String(), field.Type().String())
 						}
+						return fmt.Errorf("inject: type of %s is not assignable to %s", rv.Type().String(), field.Type().String())
 					}
 				} else {
 					// auto wired value
@@ -144,9 +142,8 @@ func (i *Instance) AutoWired(vs ...interface{}) error {
 					if rv.Type().AssignableTo(field.Type()) {
 						field.Set(rv)
 						continue
-					} else {
-						return fmt.Errorf("inject: type of %s is not assignable to %s", rv.Type().String(), field.Type().String())
 					}
+					return fmt.Errorf("inject: type of %s is not assignable to %s", rv.Type().String(), field.Type().String())
 				}
 			}
 		}
@@ -169,6 +166,18 @@ func Register(vs ...interface{}) error {
 	for _, v := range vs {
 		instance := &Instance{Value: v}
 		if err := RegisterInstance(instance); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func AutoWiredAndRegister(vs ...interface{}) error {
+	for _, v := range vs {
+		if err := Register(v); err != nil {
+			return err
+		}
+		if err := AutoWired(v); err != nil {
 			return err
 		}
 	}

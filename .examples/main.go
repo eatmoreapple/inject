@@ -20,7 +20,7 @@ func (r RealQuacker) Quack() {
 func main() {
 
 	var bird struct {
-		Quacker     Quacker     `inject:""`
+		Quacker     Quacker
 		RealQuacker RealQuacker `inject:"main.RealQuacker"`
 	}
 	quacker := RealQuacker{Name: "Daffy Duck"}
