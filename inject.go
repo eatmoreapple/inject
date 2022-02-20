@@ -50,11 +50,12 @@ func (i *Instance) init() error {
 	if ri.Kind() == reflect.Struct {
 		for j := 0; j < ri.NumField(); j++ {
 			rf := rt.Field(j)
-			if rf.PkgPath != "" {
-				continue
-			}
 			field := ri.Field(j)
 			field = reflect.Indirect(field)
+			// if is zero value or not exported,skip
+			if rf.PkgPath != "" || field.IsNil() || field.IsZero() {
+				continue
+			}
 			if field.Kind() == reflect.Struct {
 				instance := Instance{Value: field.Interface(), Name: i.Name + "." + rf.Name}
 				if err := instance.init(); err != nil {
