@@ -1,175 +1,131 @@
 package inject
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 )
 
 type Injector interface {
-	Register(is ...*Instance) error
-	AutoWired(vs ...interface{}) error
+	Repository(name string, v interface{}) error
+	Autowired(name string, v interface{}) error
+}
+
+var instance = New()
+
+func RepositoryWithInjector(obj Injector, name string, v interface{}) error {
+	return obj.Repository(name, v)
+}
+
+func Repository(v interface{}, names ...string) error {
+	var name string
+	if len(names) > 0 {
+		name = names[0]
+	}
+	return RepositoryWithInjector(instance, name, v)
+}
+
+func AutowiredWithInjector(obj Injector, name string, v interface{}) error {
+	return obj.Autowired(name, v)
+}
+
+func Autowired(v interface{}, names ...string) error {
+	var name string
+	if len(names) > 0 {
+		name = names[0]
+	}
+	return AutowiredWithInjector(instance, name, v)
+}
+
+func AutowiredStruct(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr {
+		return fmt.Errorf("%v is not a pointer", v)
+	}
+	rv = reflect.Indirect(rv)
+	if rv.Kind() != reflect.Struct {
+		return fmt.Errorf("%v is not a struct", v)
+	}
+	rt := rv.Type()
+	for i := 0; i < rv.NumField(); i++ {
+		rf := rt.Field(i)
+		// is unexported
+		// PkgPath is the package path that qualifies a lower case (unexported)
+		// field name. It is empty for upper case (exported) field names.
+		// See https://golang.org/ref/spec#Uniqueness_of_identifiers
+		if rf.PkgPath != "" {
+			continue
+		}
+		tag := rf.Tag.Get("inject")
+		if tag == "-" {
+			continue
+		}
+		field := rv.Field(i)
+		if err := Autowired(field.Addr().Interface(), tag); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type injector struct {
+	namedRepository   map[string]interface{}
+	unnamedRepository []interface{}
 }
 
 func New() Injector {
-	return &Instance{base: true}
+	return &injector{}
 }
 
-type Instance struct {
-	// Name of the instance
-	// If empty, the instance will be registered as the pkg and type name
-	Name string
-	// Value of the instance
-	Value      interface{}
-	container  map[string]*Instance
-	base       bool
-	initialize bool
+func (i *injector) Repository(name string, v interface{}) error {
+	if i.namedRepository == nil {
+		i.namedRepository = make(map[string]interface{})
+	}
+	if i.unnamedRepository == nil {
+		i.unnamedRepository = make([]interface{}, 0)
+	}
+	if name == "" {
+		i.unnamedRepository = append(i.unnamedRepository, v)
+	} else {
+		if _, exists := i.namedRepository[name]; exists {
+			return fmt.Errorf("%v is already registered", name)
+		}
+		i.namedRepository[name] = v
+	}
+	return nil
 }
 
-func (i *Instance) init() error {
-	if i.initialize {
-		return nil
+func (i *injector) Autowired(name string, v interface{}) error {
+	if v == nil {
+		return fmt.Errorf("inject: nil value")
 	}
-	i.initialize = true
-	i.container = make(map[string]*Instance)
-	if i.base {
-		return nil
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr {
+		return fmt.Errorf("inject: %v is not a pointer", rv)
 	}
-	if i.Value == nil {
-		return errors.New("inject: instance value is nil")
-	}
-	rv := reflect.ValueOf(i.Value)
 	ri := reflect.Indirect(rv)
-	rt := ri.Type()
-	if i.Name == "" {
-		i.Name = strings.Replace(rt.PkgPath(), "/", ".", -1) + "." + rt.Name()
-	}
-	i.container[i.Name] = i
-	return nil
-}
-
-func (i *Instance) Register(is ...*Instance) error {
-	if err := i.init(); err != nil {
-		return err
-	}
-	for _, s := range is {
-		if err := s.init(); err != nil {
-			return err
-		}
-		for k, v := range s.container {
-			i.container[k] = v
-		}
-	}
-	return nil
-}
-
-func (i *Instance) AutoWired(vs ...interface{}) error {
-	for _, v := range vs {
-		rv := reflect.ValueOf(v)
-		if rv.Kind() != reflect.Ptr {
-			return errors.New("inject: auto wired value must be a pointer")
-		}
-		rv = reflect.Indirect(rv)
-		t := reflect.TypeOf(v).Elem()
-		if rv.Kind() != reflect.Struct {
-			return errors.New("inject: auto wired value must be a struct")
-		}
-		for j := 0; j < rv.NumField(); j++ {
-			field := rv.Field(j)
-			tf := t.Field(j)
-			// is unexported
-			// PkgPath is the package path that qualifies a lower case (unexported)
-			// field name. It is empty for upper case (exported) field names.
-			// See https://golang.org/ref/spec#Uniqueness_of_identifiers
-			if tf.PkgPath != "" {
-				continue
-			}
-			inject := tf.Tag.Get("inject")
-			if inject == "-" {
-				continue
-			}
-			if field.CanSet() {
-				if field.Kind() == reflect.Interface {
-					// auto wired interface
-					if inject == "" {
-						var ok bool
-						for _, v := range i.container {
-							rv := reflect.ValueOf(v.Value)
-							// check if the type of the instance is assignable to the interface
-							if rv.Type().Implements(field.Type()) {
-								field.Set(rv)
-								ok = true
-								break
-							}
-						}
-						if !ok {
-							return fmt.Errorf("inject: can not find a instance for %s", field.Type().String())
-						}
-					} else {
-						// get the instance by name
-						v, ok := i.container[inject]
-						// check if the instance is registered
-						if !ok {
-							return errors.New("inject: auto wired value not found")
-						}
-						rv := reflect.ValueOf(v.Value)
-						// check if the type of the instance is assignable to the interface
-						if !rv.Type().Implements(field.Type()) {
-							field.Set(rv)
-							continue
-						}
-						return fmt.Errorf("inject: type of %s is not assignable to %s", rv.Type().String(), field.Type().String())
-					}
-				} else {
-					// auto wired value
-					v, ok := i.container[inject]
-					// check if the instance is registered
-					if !ok {
-						return errors.New("inject: auto wired value not found")
-					}
-					rv := reflect.ValueOf(v.Value)
-					if rv.Type().AssignableTo(field.Type()) {
-						field.Set(rv)
-						continue
-					}
-					return fmt.Errorf("inject: type of %s is not assignable to %s", rv.Type().String(), field.Type().String())
+	if name == "" {
+		var found bool
+		for _, r := range i.unnamedRepository {
+			vpv := reflect.ValueOf(r)
+			if vpv.CanConvert(ri.Type()) {
+				if found {
+					return fmt.Errorf("inject: %v is ambiguous", ri.Type())
 				}
+				found = true
+				ri.Set(vpv.Convert(ri.Type()))
 			}
 		}
-
-	}
-	return nil
-}
-
-var defaultInstance = New()
-
-func RegisterInstance(is ...*Instance) error {
-	return defaultInstance.Register(is...)
-}
-
-func AutoWired(vs ...interface{}) error {
-	return defaultInstance.AutoWired(vs...)
-}
-
-func Register(vs ...interface{}) error {
-	for _, v := range vs {
-		instance := &Instance{Value: v}
-		if err := RegisterInstance(instance); err != nil {
-			return err
+		if found {
+			return nil
+		}
+	} else {
+		if r, exists := i.namedRepository[name]; exists {
+			vpv := reflect.ValueOf(r)
+			if vpv.CanConvert(ri.Type()) {
+				ri.Set(vpv.Convert(ri.Type()))
+				return nil
+			}
 		}
 	}
-	return nil
-}
-
-func AutoWiredAndRegister(vs ...interface{}) error {
-	for _, v := range vs {
-		if err := Register(v); err != nil {
-			return err
-		}
-		if err := AutoWired(v); err != nil {
-			return err
-		}
-	}
-	return nil
+	return fmt.Errorf("inject: value can not convert to %s", ri.Type())
 }

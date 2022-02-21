@@ -13,38 +13,42 @@ import (
 	"github.com/eatmoreapple/inject"
 )
 
-type Quacker interface {
-	Quack()
+type Stringer interface {
+	String() string
 }
 
-type RealQuacker struct {
+type Name struct {
 	Name string
 }
 
-func (r RealQuacker) Quack() {
-	fmt.Printf("%s: Quack!\n", r.Name)
+func (n Name) String() string {
+	return n.Name + "!"
+}
+
+func init() {
+	var name = Name{Name: "John"}
+	fmt.Println(inject.Repository(&name))
+	fmt.Println(inject.Repository("ok", "ok"))
 }
 
 func main() {
-	injecter := inject.New()
 
-	var bird struct {
-		Quacker Quacker `inject:"main.RealQuacker"`
+	var a = new(Name)
+	var b Stringer
+	var c string
+	var d struct {
+		B   *Name
+		Ok  Stringer
+		Aok string `inject:"ok"`
 	}
-	quacker := RealQuacker{Name: "Daffy Duck"}
-
-	// Inject the quacker into the struct
-	// if Name is empty, use pkg path instead
-	instance := inject.Instance{Value: &quacker, Name: ""}
-	if err := injecter.Register(&instance); err != nil {
-		panic(err)
-	}
-	if err := injecter.AutoWired(&bird); err != nil {
-		panic(err)
-	}
-
-	bird.Quacker.Quack() // Daffy Duck: Quack!
+	fmt.Println(inject.Autowired(&a))
+	fmt.Println(a)
+	fmt.Println(inject.Autowired(&b))
+	fmt.Println(b)
+	fmt.Println(inject.Autowired(&c, "ok"))
+	fmt.Println(c)
+	fmt.Println(inject.AutowiredStruct(&d))
+	fmt.Println(d)
 }
-
 ```
 
